@@ -16,14 +16,37 @@
     var IDBTransaction       = window.IDBTransaction       || window.mozIDBTransaction       || window.webkitIDBTransaction;
     var stores = {};
 
+    function IndexedPromise() {
+        this.onsuccesses = [];
+        this.onerrors = [];   
+        this.lastError = null;     
+    }
+
+    IndexedPromise.prototype.success = function(onsuccess) {
+        if(onsuccess === undefined) for(var k in this.onsuccesses) (this.onsuccesses[k])(this);
+        if(onsuccess instanceof Function) this.onsuccesses.push(onsuccess);
+        return this;
+    };
+    IndexedPromise.prototype.error = function(onerror) {
+        if(onerror === undefined) for(var k in this.onerrors) (this.onerrors[k])(this.lastError);
+        if(onerror instanceof Function) this.onerrors.push(onerror);
+        return this;
+    };
+    IndexedPromise.prototype.setErrorObject = function(e){
+        this.lastError = e;
+        return this;
+    }
+
     //Basic class for interfacing with the indexedDB
     function DBObject(db) {
+        IndexedPromise.call(this);
         this.db = db;
-        this.onsuccesses = [];
-        this.onerrors = [];
         this.lastError = null;
         this.stores = {};
     }
+
+    DBObject.prototype = Object.create(IndexedPromise.prototype);
+
     DBObject.prototype._init = function(db) {
         this.db = db;
         this._createStores();
@@ -37,16 +60,6 @@
         });
     }
 
-    DBObject.prototype.success = function(onsuccess) {
-        if(onsuccess === undefined) for(var k in this.onsuccesses) (this.onsuccesses[k])(this);
-        if(onsuccess instanceof Function) this.onsuccesses.push(onsuccess);
-        return this;
-    };
-    DBObject.prototype.error = function(onerror) {
-        if(onerror === undefined) for(var k in this.onerrors) (this.onerrors[k])(this.lastError);
-        if(onerror instanceof Function) this.onerrors.push(onerror);
-        return this;
-    };
     DBObject.prototype.get = function(store,id,callback) {
         var t = this.db.transaction(store);
         var data = null;
@@ -240,8 +253,7 @@
         };
 
         request.onupgradeneeded = function(e) {
-            this.debug && console.log('onupgradeneeded');
-            this.debug && console.log(e);
+            this.debug && console.log('onupgradeneeded', e);
             var oV = e.oldVersion || 0, nV = e.newVersion || version;
             var vco = new VersionChangeDBObject(e.currentTarget, oV, nV, r);
             debug && console.log('Old version: ' + oV + ', new version: ' + nV)
@@ -252,8 +264,8 @@
             });
         };
 
-        request.onerror = function(e) { r.lastError = e; r.error(); };
-        request.onblocked = function(event) { alert("Please close all other windows that are currently accessing this page."); };
+        request.onerror = function(e)   { r.setErrorObject(e); r.error(); };
+        request.onblocked = function(e) { r.setErrorObject(e); r.error(); };
 
         return r;
     }
