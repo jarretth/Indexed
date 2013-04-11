@@ -1,0 +1,27 @@
+<html>
+	<body>
+		<script type="text/javascript" src="indexed.js"></script>
+		<script type="text/javascript">
+			var exampleStore = null;
+			var d = indexed('example',[function(db) {
+				//create version 1
+				db.createStore('example','exampleKey',['key2','key3']);
+			},function(db){
+				//upgrade DB to version 2
+				db.addIndexToStore('example','key4');
+			}], function() {
+				dataStore = d.stores['example'];
+				loadData();
+			});
+
+			function loadData() {
+				dataStore.put({exampleKey:1, key2:2});
+				dataStore.put({exampleKey:2, key3:2});
+				dataStore.put({exampleKey:3, key2:3});
+				dataStore.put([{exampleKey:4, key2:3},{exampleKey:5, key2:4}],function(){
+					console.log('Committed');
+				});
+			}
+		</script>
+	</body>
+</html>
