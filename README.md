@@ -1,0 +1,4 @@
+Indexed
+=======
+
+Another IndexedDB wrapper
