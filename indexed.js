@@ -14,7 +14,6 @@
     var IDBRequest           = window.IDBRequest           || window.mozIDBRequest           || window.webkitIDBRequest;
     var IDBSuccessEvent      = window.IDBSuccessEvent      || window.mozIDBSuccessEvent      || window.webkitIDBSuccessEvent;
     var IDBTransaction       = window.IDBTransaction       || window.mozIDBTransaction       || window.webkitIDBTransaction;
-    var stores = {};
 
     function IndexedPromise() {
         this.onsuccesses = [];
