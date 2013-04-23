@@ -1,4 +1,4 @@
-(function() {
+(function(window) {
     var debug = false;
     var indexedDB            = window.IndexedDB            || window.mozIndexedDB            || window.webkitIndexedDB;
     var IDBCursor            = window.IDBCursor            || window.mozIDBCursor            || window.webkitIDBCursor;
@@ -49,14 +49,12 @@
     };
     DBObject.prototype.get = function(store,id,callback) {
         var t = this.db.transaction(store);
+        t.oncomplete = function() { callback && callback(data); }
         var data = null;
-        t.oncomplete = function() {
-            callback && callback(data);
-        }
         var st = t.objectStore(store);
         if(id instanceof Array) {
             data = {};
-            id.map(function(v) { st.get(v).onsuccess = function(r) { data[v] = r.target.result; };});
+            id.forEach(function(v) { st.get(v).onsuccess = function(r) { data[v] = r.target.result; };});
         } else {
             st.get(id).onsuccess = function(r) {data = r.target.result;};
         }
@@ -100,17 +98,18 @@
     DBObject.prototype.findValue = function(store,index,value,callback) { return this.find(store,index,IDBKeyRange.only(value),callback) };
     DBObject.prototype.getAll    = function(store,callback) { return this.find(store,null,null,callback); };
     DBObject.prototype.put = function(store,object,done) {
-        var t = this.db.transaction([store], "readwrite");
+        var t = this.db.transaction(store, "readwrite");
+        if(done) t.oncomplete = function() { done && done() };
         var s = t.objectStore(store);
-        if(object instanceof Array) object.forEach(function(o) { s.put(o); })
-        else s.put(object);
-        if(done) t.oncomplete = done;
+        (object instanceof Array ? object : [object]).forEach(function(o) { s.put(o); });
         return t;
     };
     DBObject.prototype.remove  = function(store,id, done) {
-        var r = this.db.transaction([store], "readwrite").objectStore(store).delete(id);
-        if(done) r.onsuccess = done;
-        return r;
+        var t = this.db.transaction(store,"readwrite");
+        t.oncomplete = function() { done && done(); }
+        var s = t.objectStore(store);
+        (id instanceof Array ? id : [id]).forEach(function(v) { s.delete(v); });
+        return t;
     };
     DBObject.prototype.close = function() {
         this.db.close();
@@ -171,9 +170,11 @@
         this.db.stores[this.name] = this;
         var s = db.db.transaction(name).objectStore(name);
         this.pk = s.keyPath;
+        this.putPreprocessors = [];
+        this.indexPreprocessors = {};
         if(this.pk) {
             this['getBy'+keyToFunctionName(this.pk)] = function(value,callback) {
-                return this.db.get(this.name,value,callback);
+                return this.db.get(this.name,this.indexPreprocess(index,value),callback);
             }
             this.addIndexFunctions(null,this.pk);
         }
@@ -182,6 +183,9 @@
 
     IndexedStore.prototype.addIndexFunctions = function(index, canonical) {
         var realName = keyToFunctionName(canonical || index);
+        var storeName = index ? index : this.pk;
+        var that = this;
+        this.indexPreprocessors[storeName] = []
 
         this['findBy'+realName] = function(keyRange,callback) {
             return this.db.find(this.name,index,keyRange,callback);
@@ -190,26 +194,66 @@
             return this.db._find(this.name,index,keyRange,callback);
         }
         this['findValueBy'+realName] = function(value,callback) {
-            return this.db.findValue(this.name,index,value,callback);
+            return this.db.findValue(this.name,index,this.indexPreprocess(index,value),callback);
         };
         this['findByPrefixOf'+realName] = function(value,callback) {
-            return this.db.prefixSearch(this.name,index,value,callback);
+            return this.db.prefixSearch(this.name,index,this.indexPreprocess(index,value),callback);
         };
         this['filterBy'+realName] = function(keyRange,filter,callback) {
             return this.db.filter(this.name,index,keyRange,filter,callback);
-        }
+        };
+        this[realName+'Preprocessor'] = function(f) {
+            return this.indexPreprocessor(index,f);
+        };
+        this.putPreprocessor(function(i) {
+            if(i.hasOwnProperty(storeName)) i[storeName] = that.indexPreprocess(storeName,i[storeName]);
+            return i;
+        });
+    }
+
+    IndexedStore.prototype.get = function(item, callback) {
+        return this.db.get(this.name,this.indexPreprocess(this.pk,item),callback);
     }
 
     IndexedStore.prototype.getAll = function(callback) {
         return this.db.getAll(this.name,callback);
     }
 
+    IndexedStore.prototype.putPreprocessor = function(preprocessor) {
+        if(preprocessor instanceof Function) this.putPreprocessors.push(preprocessor);
+        return this;
+    }
+
+    IndexedStore.prototype.putPreprocess = function(item) {
+        for(var i = 0, j = this.putPreprocessors.length; i < j; i++) item = (this.putPreprocessors[i])(item);
+        return item;
+    }
+
+    IndexedStore.prototype.indexPreprocessor = function(index,preprocessor) {
+        if(!index) index = this.pk;
+        if(preprocessor instanceof Function) this.indexPreprocessors[index].push(preprocessor);
+        return this;
+    }
+
+    IndexedStore.prototype.indexPreprocess = function(index, value) {
+        for(var i = 0, j = this.indexPreprocessors[index].length; i < j; i++) value = (this.indexPreprocessors[index][i])(value);
+        return value;
+    }
+
     IndexedStore.prototype.put = function(item,done) {
-        return this.db.put(this.name,item,done);
+        if(!item) return;
+        var that = this;
+        return this.db.put(this.name,(item instanceof Array ? item : [item]).map(function(i) {
+            return that.putPreprocess(i);
+        }),done);
     }
 
     IndexedStore.prototype.remove = function(id,done) {
-        return this.db.remove(this.name,id,done);
+        if(!id) return;
+        var that = this;
+        return this.db.remove(this.name,(id instanceof Array ? id : [id]).map(function(e) {
+            return that.indexPreprocess(that.pk,e instanceof Object ? e[that.pk] : e);
+        }),done);
     }
 
     window.indexed = function(database, versions, onsuccess) {
@@ -257,4 +301,4 @@
 
         return r;
     }
-})();
+})(window);
