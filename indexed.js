@@ -61,7 +61,8 @@
         return t;
     };
     DBObject.prototype._find = function(store,index,keyRange,callback) {
-        var s = this.db.transaction(store).objectStore(store);
+        var t = this.db.transaction(store);
+        var s = t.objectStore(store);
         if(index) s = s.index(index);
         var c = s.openCursor(keyRange);
         c.onsuccess = function(e) {
@@ -73,7 +74,7 @@
                 callback && callback(null);
             }
         }
-        return c;
+        return t;
     };
     DBObject.prototype.filter = function(store,index,keyRange,filter,callback) {
         var data = [];
@@ -99,11 +100,18 @@
     DBObject.prototype.getAll    = function(store,callback) { return this.find(store,null,null,callback); };
     DBObject.prototype.put = function(store,object,done) {
         var t = this.db.transaction(store, "readwrite");
-        if(done) t.oncomplete = function() { done && done() };
+        if(done) t.oncomplete = function() { done && done(object) };
         var s = t.objectStore(store);
         (object instanceof Array ? object : [object]).forEach(function(o) { s.put(o); });
         return t;
     };
+    DBObject.prototype.count = function(store,index,keyRange,done) {
+        var t = this.db.transaction(store);
+        var s = t.objectStore(store);
+        if(index) s = s.index(index);
+        s.count(keyRange).onsuccess = function(e) { done && done(e.target.result) };
+        return t;
+    }
     DBObject.prototype.remove  = function(store,id, done) {
         var t = this.db.transaction(store,"readwrite");
         t.oncomplete = function() { done && done(); }
@@ -146,7 +154,11 @@
         if(!(store instanceof IDBObjectStore)) store = this.vtdb.transaction.objectStore(store);
         if(!(index instanceof Array)) index = [index];
         index.forEach(function(i){
-            store.createIndex(i,i,{unique:false});
+            if(i instanceof Object) {
+                store.createIndex(i.index,i.index,i.properties);
+            } else {
+                store.createIndex(i,i,{unique:false});
+            }
         });
     };
     VersionChangeDBObject.prototype.deleteStore = function(name) {
@@ -174,7 +186,7 @@
         this.indexPreprocessors = {};
         if(this.pk) {
             this['getBy'+keyToFunctionName(this.pk)] = function(value,callback) {
-                return this.db.get(this.name,this.indexPreprocess(index,value),callback);
+                return this.db.get(this.name,this.indexPreprocess(this.pk,value),callback);
             }
             this.addIndexFunctions(null,this.pk);
         }
@@ -201,6 +213,9 @@
         };
         this['filterBy'+realName] = function(keyRange,filter,callback) {
             return this.db.filter(this.name,index,keyRange,filter,callback);
+        };
+        this['countBy'+realName] = function(value,callback) {
+            return this.db.count(this.name,index,IDBKeyRange.only(value),callback);
         };
         this[realName+'Preprocessor'] = function(f) {
             return this.indexPreprocessor(index,f);
@@ -254,6 +269,10 @@
         return this.db.remove(this.name,(id instanceof Array ? id : [id]).map(function(e) {
             return that.indexPreprocess(that.pk,e instanceof Object ? e[that.pk] : e);
         }),done);
+    }
+
+    IndexedStore.prototype.count = function(done) {
+        return this.db.count(this.name,null,null,done);
     }
 
     window.indexed = function(database, versions, onsuccess) {
