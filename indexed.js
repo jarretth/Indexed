@@ -66,7 +66,7 @@
         if(index) s = s.index(index);
         var c = s.openCursor(keyRange);
         c.onsuccess = function(e) {
-            var cursor = event.target.result;
+            var cursor = e.target.result;
             if(cursor) {
                 callback && callback(cursor.value);
                 cursor.continue();
