@@ -297,7 +297,7 @@
                     this.debug && console.log('done');
                 }
             } else {
-                r._init(event.target.result);
+                r._init(e.target.result);
                 this.debug && console.log('done');
             }
         };
