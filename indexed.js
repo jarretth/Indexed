@@ -1,6 +1,6 @@
 (function(window) {
     var debug = false;
-    var indexedDB            = window.IndexedDB            || window.mozIndexedDB            || window.webkitIndexedDB;
+    var indexedDB            = window.indexedDB            || window.mozIndexedDB            || window.webkitIndexedDB;
     var IDBCursor            = window.IDBCursor            || window.mozIDBCursor            || window.webkitIDBCursor;
     var IDBDatabase          = window.IDBDatabase          || window.mozIDBDatabase          || window.webkitIDBDatabase;
     var IDBDatabaseError     = window.IDBDatabaseError     || window.mozIDBDatabaseError     || window.webkitIDBDatabaseError;
